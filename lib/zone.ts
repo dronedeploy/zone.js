@@ -1124,7 +1124,7 @@ const Zone: ZoneType = (function(global: any) {
         _numberOfNestedTaskFrames++;
         try {
           self.runCount++;
-          if (!(<any>self.data).target || !(<any>self.data).target.className || !(<any>self.data).target.className.includes('leaflet')) {
+          if (self.zone.name !== '<root>' || !(<any>self.data).eventName || (<any>self.data).eventName !== 'message') {
             console.log('source: ', self.source, ', data: ', self.data, ', runCount: ', self.runCount, ', zoneName: ', self.zone.name, ', callback: ', self.callback);
             return self.zone.runTask(self, this, <any>arguments);
           }

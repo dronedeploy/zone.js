@@ -45,7 +45,7 @@ export function propertyDescriptorPatch(_global: any) {
   } else {
     // Safari, Android browsers (Jelly Bean)
     patchViaCapturingAllTheEvents();
-    // patchClass('XMLHttpRequest');
+    patchClass('XMLHttpRequest');
     if (supportsWebSocket) {
       // webSocketPatch.apply(_global);
     }

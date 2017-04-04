@@ -457,7 +457,7 @@ var Zone$1 = (function (global) {
                 _numberOfNestedTaskFrames++;
                 try {
                     self.runCount++;
-                    if (!self.data.target || !self.data.target.className || !self.data.target.className.includes('leaflet')) {
+                    if (self.zone.name !== '<root>' || !self.data.eventName || self.data.eventName !== 'message') {
                         console.log('source: ', self.source, ', data: ', self.data, ', runCount: ', self.runCount, ', zoneName: ', self.zone.name, ', callback: ', self.callback);
                         return self.zone.runTask(self, this, arguments);
                     }
