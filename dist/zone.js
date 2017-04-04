@@ -1155,9 +1155,11 @@ function patchPrototype(prototype, fnNames) {
         var delegate = prototype[name_1];
         if (delegate) {
             prototype[name_1] = (function (delegate) {
-                return function () {
+                var patched = function () {
                     return delegate.apply(this, bindArguments(arguments, source + '.' + name_1));
                 };
+                attachOriginToPatched(patched, delegate);
+                return patched;
             })(delegate);
         }
     };
@@ -1413,6 +1415,8 @@ function patchClass(className) {
     var OriginalClass = _global$1[className];
     if (!OriginalClass)
         return;
+    // keep original class in global
+    _global$1[zoneSymbol(className)] = OriginalClass;
     _global$1[className] = function () {
         var a = bindArguments(arguments, className);
         switch (a.length) {
@@ -1435,6 +1439,8 @@ function patchClass(className) {
                 throw new Error('Arg list too long.');
         }
     };
+    // attach original delegate to patched function
+    attachOriginToPatched(_global$1[className], OriginalClass);
     var instance = new OriginalClass(function () { });
     var prop;
     for (prop in instance) {
@@ -1452,6 +1458,10 @@ function patchClass(className) {
                     set: function (fn) {
                         if (typeof fn === 'function') {
                             this[originalInstanceKey][prop] = Zone.current.wrap(fn, className + '.' + prop);
+                            // keep callback in wrapped function so we can
+                            // use it in Function.prototype.toString to return
+                            // the native one.
+                            attachOriginToPatched(this[originalInstanceKey][prop], fn);
                         }
                         else {
                             this[originalInstanceKey][prop] = fn;
@@ -1496,6 +1506,7 @@ function patchMethod(target, name, patchFn) {
     if (proto && !(delegate = proto[delegateName])) {
         delegate = proto[delegateName] = proto[name];
         proto[name] = createNamedFn(name, patchFn(delegate, delegateName, name));
+        attachOriginToPatched(proto[name], delegate);
     }
     return delegate;
 }
@@ -1517,6 +1528,9 @@ function findEventTask(target, evtName) {
     }
     return result;
 }
+function attachOriginToPatched(patched, original) {
+    patched[zoneSymbol('OriginalDelegate')] = original;
+}
 Zone[zoneSymbol('patchEventTargetMethods')] = patchEventTargetMethods;
 Zone[zoneSymbol('patchOnProperties')] = patchOnProperties;
 
@@ -1527,77 +1541,31 @@ Zone[zoneSymbol('patchOnProperties')] = patchOnProperties;
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
-function patchTimer(window, setName, cancelName, nameSuffix) {
-    var setNative = null;
-    var clearNative = null;
-    setName += nameSuffix;
-    cancelName += nameSuffix;
-    var tasksByHandleId = {};
-    function scheduleTask(task) {
-        var data = task.data;
-        function timer() {
-            try {
-                task.invoke.apply(this, arguments);
+// override Function.prototype.toString to make zone.js patched function
+// look like native function
+function patchFuncToString() {
+    var originalFunctionToString = Function.prototype.toString;
+    var g = typeof window !== 'undefined' && window || typeof self !== 'undefined' && self || global;
+    Function.prototype.toString = function () {
+        if (typeof this === 'function') {
+            if (this[zoneSymbol('OriginalDelegate')]) {
+                return originalFunctionToString.apply(this[zoneSymbol('OriginalDelegate')], arguments);
             }
-            finally {
-                delete tasksByHandleId[data.handleId];
+            if (this === Promise) {
+                var nativePromise = g[zoneSymbol('Promise')];
+                if (nativePromise) {
+                    return originalFunctionToString.apply(nativePromise, arguments);
+                }
+            }
+            if (this === Error) {
+                var nativeError = g[zoneSymbol('Error')];
+                if (nativeError) {
+                    return originalFunctionToString.apply(nativeError, arguments);
+                }
             }
         }
-        
-        data.args[0] = timer;
-        data.handleId = setNative.apply(window, data.args);
-        tasksByHandleId[data.handleId] = task;
-        return task;
-    }
-    function clearTask(task) {
-        delete tasksByHandleId[task.data.handleId];
-        return clearNative(task.data.handleId);
-    }
-    setNative =
-        patchMethod(window, setName, function (delegate) { return function (self, args) {
-            if (typeof args[0] === 'function') {
-                var zone = Zone.current;
-                var options = {
-                    handleId: null,
-                    isPeriodic: nameSuffix === 'Interval',
-                    delay: (nameSuffix === 'Timeout' || nameSuffix === 'Interval') ? args[1] || 0 : null,
-                    args: args
-                };
-                var task = zone.scheduleMacroTask(setName, args[0], options, scheduleTask, clearTask);
-                if (!task) {
-                    return task;
-                }
-                // Node.js must additionally support the ref and unref functions.
-                var handle = task.data.handleId;
-                // check whether handle is null, because some polyfill or browser
-                // may return undefined from setTimeout/setInterval/setImmediate/requestAnimationFrame
-                if (handle && handle.ref && handle.unref && typeof handle.ref === 'function' &&
-                    typeof handle.unref === 'function') {
-                    task.ref = handle.ref.bind(handle);
-                    task.unref = handle.unref.bind(handle);
-                }
-                return task;
-            }
-            else {
-                // cause an error by calling it directly.
-                return delegate.apply(window, args);
-            }
-        }; });
-    clearNative =
-        patchMethod(window, cancelName, function (delegate) { return function (self, args) {
-            var task = typeof args[0] === 'number' ? tasksByHandleId[args[0]] : args[0];
-            if (task && typeof task.type === 'string') {
-                if (task.state !== 'notScheduled' &&
-                    (task.cancelFn && task.data.isPeriodic || task.runCount === 0)) {
-                    // Do not cancel already canceled functions
-                    task.zone.cancelTask(task);
-                }
-            }
-            else {
-                // cause an error by calling it directly.
-                delegate.apply(window, args);
-            }
-        }; });
+        return originalFunctionToString.apply(this, arguments);
+    };
 }
 
 /**
@@ -1800,14 +1768,14 @@ function propertyDescriptorPatch(_global) {
             patchOnProperties(HTMLElement.prototype, eventNames);
         }
         patchOnProperties(XMLHttpRequest.prototype, null);
-        if (typeof IDBIndex !== 'undefined') {
-            patchOnProperties(IDBIndex.prototype, null);
-            patchOnProperties(IDBRequest.prototype, null);
-            patchOnProperties(IDBOpenDBRequest.prototype, null);
-            patchOnProperties(IDBDatabase.prototype, null);
-            patchOnProperties(IDBTransaction.prototype, null);
-            patchOnProperties(IDBCursor.prototype, null);
-        }
+        // if (typeof IDBIndex !== 'undefined') {
+        //   patchOnProperties(IDBIndex.prototype, null);
+        //   patchOnProperties(IDBRequest.prototype, null);
+        //   patchOnProperties(IDBOpenDBRequest.prototype, null);
+        //   patchOnProperties(IDBDatabase.prototype, null);
+        //   patchOnProperties(IDBTransaction.prototype, null);
+        //   patchOnProperties(IDBCursor.prototype, null);
+        // }
         if (supportsWebSocket) {
             patchOnProperties(WebSocket.prototype, null);
         }
@@ -1915,6 +1883,7 @@ function registerElementPatch(_global) {
         }
         return _registerElement.apply(document, [name, opts]);
     };
+    attachOriginToPatched(document.registerElement, _registerElement);
 }
 
 /**
@@ -1924,24 +1893,21 @@ function registerElementPatch(_global) {
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
-var set = 'set';
-var clear = 'clear';
-var blockingMethods = ['alert', 'prompt', 'confirm'];
 var _global = typeof window !== 'undefined' && window || typeof self !== 'undefined' && self || global;
-patchTimer(_global, set, clear, 'Timeout');
-patchTimer(_global, set, clear, 'Interval');
-patchTimer(_global, set, clear, 'Immediate');
-patchTimer(_global, 'request', 'cancel', 'AnimationFrame');
-patchTimer(_global, 'mozRequest', 'mozCancel', 'AnimationFrame');
-patchTimer(_global, 'webkitRequest', 'webkitCancel', 'AnimationFrame');
-for (var i = 0; i < blockingMethods.length; i++) {
-    var name_1 = blockingMethods[i];
-    patchMethod(_global, name_1, function (delegate, symbol, name) {
-        return function (s, args) {
-            return Zone.current.run(delegate, _global, args, name);
-        };
-    });
-}
+// patchTimer(_global, set, clear, 'Timeout');
+// patchTimer(_global, set, clear, 'Interval');
+// patchTimer(_global, set, clear, 'Immediate');
+// patchTimer(_global, 'request', 'cancel', 'AnimationFrame');
+// patchTimer(_global, 'mozRequest', 'mozCancel', 'AnimationFrame');
+// patchTimer(_global, 'webkitRequest', 'webkitCancel', 'AnimationFrame');
+// for (let i = 0; i < blockingMethods.length; i++) {
+//   const name = blockingMethods[i];
+//   patchMethod(_global, name, (delegate, symbol, name) => {
+//     return function(s: any, args: any[]) {
+//       return Zone.current.run(delegate, _global, args, name);
+//     };
+//   });
+// }
 eventTargetPatch(_global);
 // patch XMLHttpRequestEventTarget's addEventListener/removeEventListener
 var XMLHttpRequestEventTarget = _global['XMLHttpRequestEventTarget'];
@@ -1951,89 +1917,15 @@ if (XMLHttpRequestEventTarget && XMLHttpRequestEventTarget.prototype) {
 propertyDescriptorPatch(_global);
 patchClass('MutationObserver');
 patchClass('WebKitMutationObserver');
-patchClass('FileReader');
+// patchClass('FileReader');
 propertyPatch();
 registerElementPatch(_global);
-// Treat XMLHTTPRequest as a macrotask.
-patchXHR(_global);
-var XHR_TASK = zoneSymbol('xhrTask');
-var XHR_SYNC = zoneSymbol('xhrSync');
-var XHR_LISTENER = zoneSymbol('xhrListener');
-var XHR_SCHEDULED = zoneSymbol('xhrScheduled');
-function patchXHR(window) {
-    function findPendingTask(target) {
-        var pendingTask = target[XHR_TASK];
-        return pendingTask;
-    }
-    function scheduleTask(task) {
-        XMLHttpRequest[XHR_SCHEDULED] = false;
-        var data = task.data;
-        // remove existing event listener
-        var listener = data.target[XHR_LISTENER];
-        if (listener) {
-            data.target.removeEventListener('readystatechange', listener);
-        }
-        var newListener = data.target[XHR_LISTENER] = function () {
-            if (data.target.readyState === data.target.DONE) {
-                // sometimes on some browsers XMLHttpRequest will fire onreadystatechange with
-                // readyState=4 multiple times, so we need to check task state here
-                if (!data.aborted && XMLHttpRequest[XHR_SCHEDULED] && task.state === 'scheduled') {
-                    task.invoke();
-                }
-            }
-        };
-        data.target.addEventListener('readystatechange', newListener);
-        var storedTask = data.target[XHR_TASK];
-        if (!storedTask) {
-            data.target[XHR_TASK] = task;
-        }
-        sendNative.apply(data.target, data.args);
-        XMLHttpRequest[XHR_SCHEDULED] = true;
-        return task;
-    }
-    function placeholderCallback() { }
-    function clearTask(task) {
-        var data = task.data;
-        // Note - ideally, we would call data.target.removeEventListener here, but it's too late
-        // to prevent it from firing. So instead, we store info for the event listener.
-        data.aborted = true;
-        return abortNative.apply(data.target, data.args);
-    }
-    var openNative = patchMethod(window.XMLHttpRequest.prototype, 'open', function () { return function (self, args) {
-        self[XHR_SYNC] = args[2] == false;
-        return openNative.apply(self, args);
-    }; });
-    var sendNative = patchMethod(window.XMLHttpRequest.prototype, 'send', function () { return function (self, args) {
-        var zone = Zone.current;
-        if (self[XHR_SYNC]) {
-            // if the XHR is sync there is no task to schedule, just execute the code.
-            return sendNative.apply(self, args);
-        }
-        else {
-            var options = { target: self, isPeriodic: false, delay: null, args: args, aborted: false };
-            return zone.scheduleMacroTask('XMLHttpRequest.send', placeholderCallback, options, scheduleTask, clearTask);
-        }
-    }; });
-    var abortNative = patchMethod(window.XMLHttpRequest.prototype, 'abort', function (delegate) { return function (self, args) {
-        var task = findPendingTask(self);
-        if (task && typeof task.type == 'string') {
-            // If the XHR has already completed, do nothing.
-            // If the XHR has already been aborted, do nothing.
-            // Fix #569, call abort multiple times before done will cause
-            // macroTask task count be negative number
-            if (task.cancelFn == null || (task.data && task.data.aborted)) {
-                return;
-            }
-            task.zone.cancelTask(task);
-        }
-        // Otherwise, we are trying to abort an XHR which has not yet been sent, so there is no task
-        // to cancel. Do nothing.
-    }; });
-}
 /// GEO_LOCATION
 if (_global['navigator'] && _global['navigator'].geolocation) {
     patchPrototype(_global['navigator'].geolocation, ['getCurrentPosition', 'watchPosition']);
 }
+// patch Func.prototype.toString to let them look like native
+patchFuncToString();
 // handle unhandled promise rejection
 function findPromiseRejectionHandler(evtName) {
     return function (e) {

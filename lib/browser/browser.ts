@@ -21,21 +21,21 @@ const blockingMethods = ['alert', 'prompt', 'confirm'];
 const _global: any =
     typeof window !== 'undefined' && window || typeof self !== 'undefined' && self || global;
 
-patchTimer(_global, set, clear, 'Timeout');
-patchTimer(_global, set, clear, 'Interval');
-patchTimer(_global, set, clear, 'Immediate');
-patchTimer(_global, 'request', 'cancel', 'AnimationFrame');
-patchTimer(_global, 'mozRequest', 'mozCancel', 'AnimationFrame');
-patchTimer(_global, 'webkitRequest', 'webkitCancel', 'AnimationFrame');
+// patchTimer(_global, set, clear, 'Timeout');
+// patchTimer(_global, set, clear, 'Interval');
+// patchTimer(_global, set, clear, 'Immediate');
+// patchTimer(_global, 'request', 'cancel', 'AnimationFrame');
+// patchTimer(_global, 'mozRequest', 'mozCancel', 'AnimationFrame');
+// patchTimer(_global, 'webkitRequest', 'webkitCancel', 'AnimationFrame');
 
-for (let i = 0; i < blockingMethods.length; i++) {
-  const name = blockingMethods[i];
-  patchMethod(_global, name, (delegate, symbol, name) => {
-    return function(s: any, args: any[]) {
-      return Zone.current.run(delegate, _global, args, name);
-    };
-  });
-}
+// for (let i = 0; i < blockingMethods.length; i++) {
+//   const name = blockingMethods[i];
+//   patchMethod(_global, name, (delegate, symbol, name) => {
+//     return function(s: any, args: any[]) {
+//       return Zone.current.run(delegate, _global, args, name);
+//     };
+//   });
+// }
 
 eventTargetPatch(_global);
 // patch XMLHttpRequestEventTarget's addEventListener/removeEventListener
@@ -46,12 +46,12 @@ if (XMLHttpRequestEventTarget && XMLHttpRequestEventTarget.prototype) {
 propertyDescriptorPatch(_global);
 patchClass('MutationObserver');
 patchClass('WebKitMutationObserver');
-patchClass('FileReader');
+// patchClass('FileReader');
 propertyPatch();
 registerElementPatch(_global);
 
 // Treat XMLHTTPRequest as a macrotask.
-patchXHR(_global);
+// patchXHR(_global);
 
 const XHR_TASK = zoneSymbol('xhrTask');
 const XHR_SYNC = zoneSymbol('xhrSync');
