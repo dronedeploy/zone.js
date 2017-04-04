@@ -457,6 +457,7 @@ var Zone$1 = (function (global) {
                 _numberOfNestedTaskFrames++;
                 try {
                     self.runCount++;
+                    console.log('source: ', self.source, ', data: ', self.data, ', runCount: ', self.runCount, ', zoneName: ', self.zone.name, ', callback: ', self.callback);
                     return self.zone.runTask(self, this, arguments);
                 }
                 finally {

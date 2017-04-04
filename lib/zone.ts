@@ -1124,6 +1124,7 @@ const Zone: ZoneType = (function(global: any) {
         _numberOfNestedTaskFrames++;
         try {
           self.runCount++;
+          console.log('source: ', self.source, ', data: ', self.data, ', runCount: ', self.runCount, ', zoneName: ', self.zone.name, ', callback: ', self.callback);
           return self.zone.runTask(self, this, <any>arguments);
         } finally {
           if (_numberOfNestedTaskFrames == 1) {
