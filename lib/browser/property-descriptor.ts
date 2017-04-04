@@ -11,7 +11,7 @@ import {isBrowser, isMix, isNode, patchClass, patchOnProperties, zoneSymbol} fro
 import * as webSocketPatch from './websocket';
 
 const eventNames =
-    'copy cut paste abort blur focus canplay canplaythrough change click contextmenu dblclick drag dragend dragenter dragleave dragover dragstart drop durationchange emptied ended input invalid keydown keypress keyup load loadeddata loadedmetadata loadstart message mousedown mouseenter mouseleave mousemove mouseout mouseover mouseup pause play playing progress ratechange reset scroll seeked seeking select show stalled submit suspend timeupdate volumechange waiting mozfullscreenchange mozfullscreenerror mozpointerlockchange mozpointerlockerror error webglcontextrestored webglcontextlost webglcontextcreationerror'
+    'copy cut paste abort blur focus canplay canplaythrough change click contextmenu dblclick drag dragend dragenter dragleave dragover dragstart drop durationchange emptied ended input invalid keydown keypress keyup  loadeddata loadedmetadata loadstart message mousedown mouseenter mouseleave mousemove mouseout mouseover mouseup pause play playing progress ratechange reset scroll seeked seeking select show stalled submit suspend timeupdate volumechange waiting mozfullscreenchange mozfullscreenerror mozpointerlockchange mozpointerlockerror error webglcontextrestored webglcontextlost webglcontextcreationerror'
         .split(' ');
 
 export function propertyDescriptorPatch(_global: any) {
@@ -45,9 +45,9 @@ export function propertyDescriptorPatch(_global: any) {
   } else {
     // Safari, Android browsers (Jelly Bean)
     patchViaCapturingAllTheEvents();
-    patchClass('XMLHttpRequest');
+    // patchClass('XMLHttpRequest');
     if (supportsWebSocket) {
-      webSocketPatch.apply(_global);
+      // webSocketPatch.apply(_global);
     }
   }
 }

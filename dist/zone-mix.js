@@ -457,8 +457,10 @@ var Zone$1 = (function (global) {
                 _numberOfNestedTaskFrames++;
                 try {
                     self.runCount++;
-                    console.log('source: ', self.source, ', data: ', self.data, ', runCount: ', self.runCount, ', zoneName: ', self.zone.name, ', callback: ', self.callback);
-                    return self.zone.runTask(self, this, arguments);
+                    if (!self.data.target || !self.data.target.className || !self.data.target.className.includes('leaflet')) {
+                        console.log('source: ', self.source, ', data: ', self.data, ', runCount: ', self.runCount, ', zoneName: ', self.zone.name, ', callback: ', self.callback);
+                        return self.zone.runTask(self, this, arguments);
+                    }
                 }
                 finally {
                     if (_numberOfNestedTaskFrames == 1) {
@@ -1807,47 +1809,7 @@ function eventTargetPatch(_global) {
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
-// we have to patch the instance since the proto is non-configurable
-function apply(_global) {
-    var WS = _global.WebSocket;
-    // On Safari window.EventTarget doesn't exist so need to patch WS add/removeEventListener
-    // On older Chrome, no need since EventTarget was already patched
-    if (!_global.EventTarget) {
-        patchEventTargetMethods(WS.prototype);
-    }
-    _global.WebSocket = function (a, b) {
-        var socket = arguments.length > 1 ? new WS(a, b) : new WS(a);
-        var proxySocket;
-        // Safari 7.0 has non-configurable own 'onmessage' and friends properties on the socket instance
-        var onmessageDesc = Object.getOwnPropertyDescriptor(socket, 'onmessage');
-        if (onmessageDesc && onmessageDesc.configurable === false) {
-            proxySocket = Object.create(socket);
-            ['addEventListener', 'removeEventListener', 'send', 'close'].forEach(function (propName) {
-                proxySocket[propName] = function () {
-                    return socket[propName].apply(socket, arguments);
-                };
-            });
-        }
-        else {
-            // we can patch the real socket
-            proxySocket = socket;
-        }
-        patchOnProperties(proxySocket, ['close', 'error', 'message', 'open']);
-        return proxySocket;
-    };
-    for (var prop in WS) {
-        _global.WebSocket[prop] = WS[prop];
-    }
-}
-
-/**
- * @license
- * Copyright Google Inc. All Rights Reserved.
- *
- * Use of this source code is governed by an MIT-style license that can be
- * found in the LICENSE file at https://angular.io/license
- */
-var eventNames = 'copy cut paste abort blur focus canplay canplaythrough change click contextmenu dblclick drag dragend dragenter dragleave dragover dragstart drop durationchange emptied ended input invalid keydown keypress keyup load loadeddata loadedmetadata loadstart message mousedown mouseenter mouseleave mousemove mouseout mouseover mouseup pause play playing progress ratechange reset scroll seeked seeking select show stalled submit suspend timeupdate volumechange waiting mozfullscreenchange mozfullscreenerror mozpointerlockchange mozpointerlockerror error webglcontextrestored webglcontextlost webglcontextcreationerror'
+var eventNames = 'copy cut paste abort blur focus canplay canplaythrough change click contextmenu dblclick drag dragend dragenter dragleave dragover dragstart drop durationchange emptied ended input invalid keydown keypress keyup  loadeddata loadedmetadata loadstart message mousedown mouseenter mouseleave mousemove mouseout mouseover mouseup pause play playing progress ratechange reset scroll seeked seeking select show stalled submit suspend timeupdate volumechange waiting mozfullscreenchange mozfullscreenerror mozpointerlockchange mozpointerlockerror error webglcontextrestored webglcontextlost webglcontextcreationerror'
     .split(' ');
 function propertyDescriptorPatch(_global) {
     if (isNode && !isMix) {
@@ -1880,9 +1842,9 @@ function propertyDescriptorPatch(_global) {
     else {
         // Safari, Android browsers (Jelly Bean)
         patchViaCapturingAllTheEvents();
-        patchClass('XMLHttpRequest');
+        // patchClass('XMLHttpRequest');
         if (supportsWebSocket) {
-            apply(_global);
+            // webSocketPatch.apply(_global);
         }
     }
 }

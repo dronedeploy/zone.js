@@ -1124,8 +1124,11 @@ const Zone: ZoneType = (function(global: any) {
         _numberOfNestedTaskFrames++;
         try {
           self.runCount++;
-          console.log('source: ', self.source, ', data: ', self.data, ', runCount: ', self.runCount, ', zoneName: ', self.zone.name, ', callback: ', self.callback);
-          return self.zone.runTask(self, this, <any>arguments);
+          if (!(<any>self.data).target || !(<any>self.data).target.className || !(<any>self.data).target.className.includes('leaflet')) {
+            console.log('source: ', self.source, ', data: ', self.data, ', runCount: ', self.runCount, ', zoneName: ', self.zone.name, ', callback: ', self.callback);
+            return self.zone.runTask(self, this, <any>arguments);
+          }
+          
         } finally {
           if (_numberOfNestedTaskFrames == 1) {
             drainMicroTaskQueue();
